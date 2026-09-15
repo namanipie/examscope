@@ -63,6 +63,8 @@ def migrate(source_url: str, target_url: str):
         sys.exit(1)
 
     try:
+        valid_keys = {}
+        
         for table in Base.metadata.sorted_tables:
             table_name = table.name
             print(f"Migrating table: {table_name}...")
@@ -71,14 +73,58 @@ def migrate(source_url: str, target_url: str):
             rows = source_session.execute(table.select()).all()
             if not rows:
                 print(f"  - 0 rows")
+                valid_keys[table_name] = set()
                 continue
                 
             # Convert rows to dicts using _mapping
             row_dicts = [dict(row._mapping) for row in rows]
             
+            fk_columns = []
+            for fk in table.foreign_keys:
+                fk_columns.append({
+                    'col': fk.parent.name,
+                    'target_table': fk.column.table.name,
+                    'nullable': fk.parent.nullable
+                })
+                
+            cleansed_dicts = []
+            for r in row_dicts:
+                skip_row = False
+                for fk_info in fk_columns:
+                    val = r.get(fk_info['col'])
+                    if val is not None:
+                        target_table = fk_info['target_table']
+                        if target_table in valid_keys and val not in valid_keys[target_table]:
+                            if fk_info['nullable']:
+                                r[fk_info['col']] = None
+                            else:
+                                print(f"    - Warning: Dropping row in {table_name} due to missing non-nullable FK {fk_info['col']}={val} referencing {target_table}")
+                                skip_row = True
+                                break
+                if not skip_row:
+                    cleansed_dicts.append(r)
+            
+            if not cleansed_dicts:
+                print(f"  - 0 rows (all filtered)")
+                valid_keys[table_name] = set()
+                continue
+            
             # Insert into target
-            target_session.execute(table.insert(), row_dicts)
-            print(f"  - {len(rows)} rows migrated")
+            target_session.execute(table.insert(), cleansed_dicts)
+            
+            # Track valid primary keys for this table (assuming single PK)
+            pk_cols = [c.name for c in table.primary_key]
+            if len(pk_cols) == 1:
+                pk_col = pk_cols[0]
+                valid_keys[table_name] = {r[pk_col] for r in cleansed_dicts}
+            else:
+                valid_keys[table_name] = set()
+                
+            filtered = len(rows) - len(cleansed_dicts)
+            msg = f"  - {len(cleansed_dicts)} rows migrated"
+            if filtered > 0:
+                msg += f" ({filtered} rows filtered/cleansed due to invalid FKs)"
+            print(msg)
             
         target_session.commit()
         print("\nMigration completed successfully!")
