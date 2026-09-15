@@ -127,6 +127,14 @@ export default function MintAIPage() {
     setHasData(false);
     setError("");
     
+    console.log("=== MINTAI API TRACE ===");
+    console.log("Course record:", selectedCourseRecord);
+    console.log("Course.id:", selectedCourseRecord?.id ?? selectedCourseId);
+    console.log("Course.code:", selectedCourseRecord?.code || (selectedCourseRecord as any)?.course_code || "N/A");
+    console.log("Course.name:", selectedCourseRecord?.name || selectedCourseRecord?.course_name || selectedSubject);
+    console.log("Prediction URL:", `/api/predictions/${encodeURIComponent(selectedSubject)}`);
+    console.log("DNA URL:", `/api/analysis/dna?course_id=${selectedCourseId}`);
+    console.log("========================");
     console.log("=== RUN FORECAST DEBUG ===");
     console.log("selectedBranch:", selectedBranch);
     console.log("selectedSemester:", selectedSemester);
