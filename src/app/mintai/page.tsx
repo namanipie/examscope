@@ -6,10 +6,44 @@ import { Footer } from "@/components/layout/footer";
 import { Leaf, Search, AlertCircle, BarChart3, Database, FileText, Activity, Clock, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { getCourses, getPredictions, getExamDNA } from "@/lib/api";
 import { BackendCourse, PredictionResponse, ExamDNAAnalysis, BackendPrediction } from "@/lib/types";
+import { CURRICULUM } from "@/lib/curriculumData";
+
+type CourseRecord = BackendCourse & {
+  id?: number | string;
+  name?: string;
+  code?: string;
+};
+
+type CurriculumSubject = {
+  id: string;
+  name: string;
+  credits?: number;
+};
+
+type ExamDNAResponse = ExamDNAAnalysis & {
+  sample_size?: { exam_types?: unknown[] };
+};
+
+const normalizeName = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const examTypeOrder = (examType: string) => {
+  const order: Record<string, number> = { CT1: 1, CT2: 2, CT3: 3, CT4: 4, END_SEM: 5 };
+  return order[examType] ?? 99;
+};
+
+const supportedExamTypes = ["CT1", "CT2", "CT3", "CT4", "END_SEM"];
 
 export default function MintAIPage() {
-  const [courses, setCourses] = useState<BackendCourse[]>([]);
+  const [courses, setCourses] = useState<CourseRecord[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState("Computer Science and Engineering");
+  const [selectedSemester, setSelectedSemester] = useState("1");
   const [selectedCourse, setSelectedCourse] = useState("");
+  const [selectedExam, setSelectedExam] = useState("");
+  const [examinations, setExaminations] = useState<string[]>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(true);
+  const [isLoadingExaminations, setIsLoadingExaminations] = useState(false);
+  const [courseLoadError, setCourseLoadError] = useState("");
+  const [examLoadError, setExamLoadError] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasData, setHasData] = useState(false);
   const [error, setError] = useState("");
@@ -17,35 +51,90 @@ export default function MintAIPage() {
   const [predictions, setPredictions] = useState<PredictionResponse | null>(null);
   const [dna, setDna] = useState<ExamDNAAnalysis | null>(null);
 
+  const branches = Object.keys(CURRICULUM).sort();
+  const semesters = selectedBranch
+    ? Object.keys(CURRICULUM[selectedBranch] || {}).sort((a, b) => Number(a) - Number(b))
+    : [];
+  const curriculumSubjects = (CURRICULUM[selectedBranch]?.[selectedSemester] || []) as CurriculumSubject[];
+  const availableSubjects = curriculumSubjects
+    .map((subject) => ({
+      subject,
+      course: courses.find((course) => normalizeName(course.name || course.course_name) === normalizeName(subject.name)),
+    }))
+    .filter((entry): entry is { subject: CurriculumSubject; course: CourseRecord } => Boolean(entry.course));
+  const selectedCourseRecord = availableSubjects.find(
+    ({ course }) => String(course.id ?? course.course_id) === selectedCourse,
+  )?.course;
+  const selectedCourseId = selectedCourseRecord
+    ? String(selectedCourseRecord.id ?? selectedCourseRecord.course_id)
+    : "";
+  const selectedSubject = selectedCourseRecord?.name || selectedCourseRecord?.course_name || "";
+
   useEffect(() => {
     getCourses().then((data) => {
       // Data might be an array or an object with an array
       const courseList = Array.isArray(data) ? data : (data.items || data.courses || []);
-      setCourses(courseList);
+      setCourses(courseList as CourseRecord[]);
+      setCourseLoadError("");
     }).catch(err => {
       console.error("Failed to load courses", err);
-    });
+      setCourseLoadError("Unable to load courses. Please try again.");
+    }).finally(() => setIsLoadingCourses(false));
   }, []);
+
+  useEffect(() => {
+    if (!selectedCourseRecord) {
+      return;
+    }
+
+    let active = true;
+    getExamDNA(selectedCourseId)
+      .then((data) => {
+        if (!active) return;
+        const rawExamTypes = (data as ExamDNAResponse).sample_size?.exam_types || [];
+        const examTypes = [...new Set(rawExamTypes)].sort(
+          (a, b) => String(a).localeCompare(String(b)),
+        ).filter((value): value is string => typeof value === "string" && value.length > 0)
+          .sort((a, b) => examTypeOrder(a) - examTypeOrder(b) || a.localeCompare(b));
+        setDna(data);
+        setExaminations(examTypes);
+        setSelectedExam("");
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("Failed to load examinations", err);
+        setExamLoadError("Course-specific examination data is unavailable; showing supported examination types.");
+        setDna(null);
+        setExaminations(supportedExamTypes);
+      })
+      .finally(() => {
+        if (active) setIsLoadingExaminations(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedCourseId, selectedCourseRecord]);
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCourse) return;
+    if (!selectedCourseRecord || !selectedExam) {
+      setError("Select a valid subject and examination before running a forecast.");
+      return;
+    }
     
     setIsAnalyzing(true);
     setHasData(false);
     setError("");
     
     try {
-      // Find the course to get its name if subject is needed
-      const courseObj = courses.find(c => String(c.course_id ?? (c as any).id) === selectedCourse);
-      const subject = courseObj ? courseObj.course_name || courseObj.course_id || selectedCourse : selectedCourse;
-      
+      // The prediction API accepts the course name; the examination remains frontend context.
       const [predData, dnaData] = await Promise.all([
-        getPredictions(subject).catch(e => {
+        getPredictions(selectedSubject).catch(e => {
             if(e.status === 404) return null;
             throw e;
         }),
-        getExamDNA(selectedCourse).catch(e => null)
+        getExamDNA(selectedCourseId).catch(e => null)
       ]);
       
       if (!predData) {
@@ -54,7 +143,7 @@ export default function MintAIPage() {
         setPredictions(predData);
         setDna(dnaData);
         setHasData(true);
-        localStorage.setItem("markmint_recent", JSON.stringify({ course: subject, type: "Forecast" }));
+        localStorage.setItem("markmint_recent", JSON.stringify({ course: selectedSubject, exam: selectedExam, type: "Forecast" }));
       }
     } catch (err: any) {
       setError(err.message || "Failed to fetch predictions. Ensure the backend is running.");
@@ -83,25 +172,122 @@ export default function MintAIPage() {
             <form onSubmit={handleAnalyze} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">
-                  Select Course
+                  Select Branch
                 </label>
                 <select 
-                  value={selectedCourse}
-                  onChange={(e) => setSelectedCourse(e.target.value)}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors appearance-none"
+                  value={selectedBranch}
+                  onChange={(e) => {
+                    setSelectedBranch(e.target.value);
+                    setSelectedSemester("");
+                    setSelectedCourse("");
+                    setSelectedExam("");
+                    setIsLoadingExaminations(false);
+                    setExaminations([]);
+                    setExamLoadError("");
+                    setDna(null);
+                  }}
+                  disabled={isLoadingCourses || branches.length === 0}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors appearance-none mb-4"
                 >
-                  <option value="" disabled>Select a course</option>
-                  {courses.map((c: any) => (
-                    <option key={c.course_id || c.id} value={c.course_id || c.id}>
-                      {c.course_code || c.code} - {c.course_name || c.name}
-                    </option>
+                  <option value="" disabled>Select a branch</option>
+                  {branches.map((branch) => (
+                    <option key={branch} value={branch}>{branch}</option>
                   ))}
                 </select>
+
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">
+                  Select Semester
+                </label>
+                <select
+                  value={selectedSemester}
+                  onChange={(e) => {
+                    setSelectedSemester(e.target.value);
+                    setSelectedCourse("");
+                    setSelectedExam("");
+                    setIsLoadingExaminations(false);
+                    setExaminations([]);
+                    setExamLoadError("");
+                    setDna(null);
+                  }}
+                  disabled={!selectedBranch || semesters.length === 0}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors appearance-none mb-4"
+                >
+                  <option value="" disabled>Select a semester</option>
+                  {semesters.map((semester) => (
+                    <option key={semester} value={semester}>Semester {semester}</option>
+                  ))}
+                </select>
+
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">
+                  Select Subject
+                </label>
+                <select
+                  value={selectedCourse}
+                  onChange={(e) => {
+                    setSelectedCourse(e.target.value);
+                    setSelectedExam("");
+                    setIsLoadingExaminations(true);
+                    setExaminations([]);
+                    setDna(null);
+                    setExamLoadError("");
+                  }}
+                  disabled={!selectedSemester || availableSubjects.length === 0 || isLoadingCourses}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors appearance-none mb-4"
+                >
+                  <option value="" disabled>Select a subject</option>
+                  {availableSubjects.map(({ subject, course }) => {
+                    const courseId = String(course.id ?? course.course_id);
+                    const courseCode = course.code || course.course_code || "";
+                    const courseName = course.name || course.course_name || subject.name;
+                    return (
+                      <option key={courseId} value={courseId}>
+                        {courseCode ? `${courseName} (${courseCode})` : courseName}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">
+                  Select Examination
+                </label>
+                <select
+                  value={selectedExam}
+                  onChange={(e) => setSelectedExam(e.target.value)}
+                  disabled={!selectedCourse || isLoadingExaminations || examinations.length === 0}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors appearance-none"
+                >
+                  <option value="" disabled>Select an examination</option>
+                  {examinations.map((examType) => (
+                    <option key={examType} value={examType}>{examType}</option>
+                  ))}
+                </select>
+
+                {isLoadingCourses && (
+                  <p className="mt-2 text-xs text-muted-foreground">Loading courses...</p>
+                )}
+                {!isLoadingCourses && courseLoadError && (
+                  <p className="mt-2 text-xs text-red-400">{courseLoadError}</p>
+                )}
+                {!isLoadingCourses && selectedBranch && semesters.length === 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground">No semesters available for this branch.</p>
+                )}
+                {!isLoadingCourses && selectedSemester && availableSubjects.length === 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground">No subjects available for this semester.</p>
+                )}
+                {selectedCourse && isLoadingExaminations && (
+                  <p className="mt-2 text-xs text-muted-foreground">Loading examinations...</p>
+                )}
+                {selectedCourse && !isLoadingExaminations && examLoadError && (
+                  <p className="mt-2 text-xs text-amber-400">{examLoadError}</p>
+                )}
+                {selectedCourse && !isLoadingExaminations && !examLoadError && examinations.length === 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground">No examinations available for this subject.</p>
+                )}
               </div>
 
               <button 
                 type="submit"
-                disabled={!selectedCourse || isAnalyzing}
+                disabled={!selectedCourse || !selectedExam || isAnalyzing || Boolean(courseLoadError)}
                 className="w-full mt-4 bg-foreground text-background py-2.5 rounded-md text-sm font-medium hover:bg-foreground/90 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isAnalyzing ? (
