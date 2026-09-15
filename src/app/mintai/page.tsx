@@ -37,7 +37,7 @@ export default function MintAIPage() {
     
     try {
       // Find the course to get its name if subject is needed
-      const courseObj = courses.find(c => c.course_id === selectedCourse || (c as any).id === selectedCourse);
+      const courseObj = courses.find(c => String(c.course_id ?? (c as any).id) === selectedCourse);
       const subject = courseObj ? courseObj.course_name || courseObj.course_id || selectedCourse : selectedCourse;
       
       const [predData, dnaData] = await Promise.all([
