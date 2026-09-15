@@ -127,6 +127,18 @@ export default function MintAIPage() {
     setHasData(false);
     setError("");
     
+    console.log("=== RUN FORECAST DEBUG ===");
+    console.log("selectedBranch:", selectedBranch);
+    console.log("selectedSemester:", selectedSemester);
+    console.log("selectedCourse (React state):", selectedCourse);
+    console.log("selectedExam:", selectedExam);
+    console.log("matched course object:", selectedCourseRecord);
+    console.log("course.id:", selectedCourseRecord.id);
+    console.log("course.code:", selectedCourseRecord.code || (selectedCourseRecord as any).course_code);
+    console.log("course.name:", selectedCourseRecord.name || (selectedCourseRecord as any).course_name);
+    console.log("final prediction URL:", `/api/predictions/${encodeURIComponent(selectedSubject)}`);
+    console.log("==========================");
+
     try {
       // The prediction API accepts the course name; the examination remains frontend context.
       const [predData, dnaData] = await Promise.all([

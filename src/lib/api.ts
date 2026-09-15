@@ -85,7 +85,7 @@ export async function getCourse(id: string | number) {
 }
 
 export async function getPredictions(subject: string) {
-  return fetchAPI(`/predictions/${subject}`);
+  return fetchAPI(`/predictions/${encodeURIComponent(subject)}`);
 }
 
 export async function getExamPredictions(id: string | number) {
@@ -105,15 +105,15 @@ export async function getExamDNA(course_id: string | number) {
 }
 
 export async function getStudyPriorities(course_name: string) {
-  return fetchAPI(`/study/priorities/${course_name}`);
+  return fetchAPI(`/study/priorities/${encodeURIComponent(course_name)}`);
 }
 
 export async function getStudyPlan(course_name: string) {
-  return fetchAPI(`/study/plan/${course_name}`);
+  return fetchAPI(`/study/plan/${encodeURIComponent(course_name)}`);
 }
 
 export async function getStudyResources(course_name: string, topic_name: string) {
-  return fetchAPI(`/study/resources/${course_name}/${topic_name}`);
+  return fetchAPI(`/study/resources/${encodeURIComponent(course_name)}/${encodeURIComponent(topic_name)}`);
 }
 
 export async function uploadStudyNotes(formData: FormData) {
@@ -164,7 +164,7 @@ export async function updateStudyProgress(course_id: string, data: any) {
 }
 
 export async function getPractice(subject: string) {
-  return fetchAPI(`/practice/${subject}`);
+  return fetchAPI(`/practice/${encodeURIComponent(subject)}`);
 }
 
 // Global dashboard stats (if backend provides a summary, else we'll fetch courses and use that)
