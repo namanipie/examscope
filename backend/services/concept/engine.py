@@ -54,7 +54,7 @@ class ConceptIntelligenceEngine:
         total_marks = sum(q.marks or 0.0 for q in questions)
         q_ids = [q.id for q in questions]
         
-        families = list({q.family.name for q in questions if q.family})
+        families = list({q.family.canonical_name for q in questions if q.family})
 
         # Calculate recurrence interval roughly based on years
         interval = 0.0
