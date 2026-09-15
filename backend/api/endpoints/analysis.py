@@ -52,7 +52,7 @@ def _get_exams_as_dicts(course_id: int, db: Session) -> list[dict]:
                     "unit": None, # Unit mapped via concepts typically, stubbed here
                     "question_type": q.question_type,
                     "repetition_type": q.family.repetition_type if q.family else None,
-                    "family_name": q.family.name if q.family else None,
+                    "family_name": q.family.canonical_name if q.family else None,
                     "difficulty": None # Fallback
                 })
         out.append(ex_dict)
