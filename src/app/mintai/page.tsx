@@ -449,7 +449,7 @@ export default function MintAIPage() {
                         </div>
                         {p.evidence_details && (
                           <div className="mt-1 pt-2 border-t border-border/50 italic opacity-80">
-                            "{p.evidence_details}"
+                            <span className="text-xs text-muted-foreground whitespace-pre-wrap">{JSON.stringify(p.evidence_details || {}, null, 2)}</span>
                           </div>
                         )}
                       </div>
