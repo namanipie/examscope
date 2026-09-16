@@ -89,7 +89,7 @@ export async function getPredictions(subject: string) {
 }
 
 export async function getExamPredictions(id: string | number) {
-  return fetchAPI(`/predictions/${id}`);
+  return fetchAPI(`/predictions/${encodeURIComponent(String(id))}`);
 }
 
 export async function getExamQuestions(
@@ -97,11 +97,11 @@ export async function getExamQuestions(
   page: number = 1,
   size: number = 50
 ) {
-  return fetchAPI(`/exams/${id}/questions?page=${page}&size=${size}`);
+  return fetchAPI(`/exams/${encodeURIComponent(String(id))}/questions?page=${page}&size=${size}`);
 }
 
 export async function getExamDNA(course_id: string | number) {
-  return fetchAPI(`/analysis/dna?course_id=${course_id}`);
+  return fetchAPI(`/analysis/dna?course_id=${encodeURIComponent(String(course_id))}`);
 }
 
 export async function getStudyPriorities(course_name: string) {

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy.orm import joinedload
+import re
 import time
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 
 from backend.core.database import get_db
 from backend.models.core import Exam, Course, Section, Question, QuestionConcept
@@ -58,22 +59,43 @@ def _get_exams_as_dicts(course_id: int, db: Session) -> list[dict]:
         out.append(ex_dict)
     return out
 
+def _resolve_course(db: Session, course_identifier: str) -> Course:
+    """Generically resolve a course by numeric ID, code, name, or normalized string."""
+    identifier_str = str(course_identifier).strip()
+    course = None
+    if identifier_str.isdigit():
+        course = db.query(Course).filter(Course.id == int(identifier_str)).first()
+    if not course:
+        course = db.query(Course).filter(func.lower(Course.code) == identifier_str.lower()).first()
+    if not course:
+        course = db.query(Course).filter(func.lower(Course.name) == identifier_str.lower()).first()
+    if not course:
+        norm_id = re.sub(r'[^a-zA-Z0-9]', '', identifier_str).lower()
+        if norm_id:
+            for c in db.query(Course).all():
+                if re.sub(r'[^a-zA-Z0-9]', '', c.name).lower() == norm_id:
+                    course = c
+                    break
+                if re.sub(r'[^a-zA-Z0-9]', '', c.code).lower() == norm_id:
+                    course = c
+                    break
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return course
+
 @router.get("/dna", response_model=ExamDNA)
 def get_course_dna(
-    course_id: int = Query(..., description="The ID of the course to analyze"),
+    course_id: str = Query(..., description="The ID, code, or name of the course to analyze"),
     db: Session = Depends(get_db)
 ):
-    cache_key = (course_id, "dna")
+    course = _resolve_course(db, course_id)
+    cache_key = (course.id, "dna")
     if cache_key in _ANALYSIS_CACHE:
         ts, data = _ANALYSIS_CACHE[cache_key]
         if time.time() - ts < CACHE_TTL:
             return data
-            
-    course = db.query(Course).filter(Course.id == course_id).first()
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
 
-    exams_dict = _get_exams_as_dicts(course_id, db)
+    exams_dict = _get_exams_as_dicts(course.id, db)
     dna_report = DNAAnalyzerService.analyze(exams_dict)
     
     _ANALYSIS_CACHE[cache_key] = (time.time(), dna_report)
@@ -81,21 +103,18 @@ def get_course_dna(
 
 @router.get("/evolution", response_model=EvolutionReport)
 def get_course_evolution(
-    course_id: int = Query(..., description="The ID of the course to track"),
+    course_id: str = Query(..., description="The ID, code, or name of the course to track"),
     db: Session = Depends(get_db)
 ):
-    cache_key = (course_id, "evolution")
+    course = _resolve_course(db, course_id)
+    cache_key = (course.id, "evolution")
     if cache_key in _ANALYSIS_CACHE:
         ts, data = _ANALYSIS_CACHE[cache_key]
         if time.time() - ts < CACHE_TTL:
             return data
 
-    course = db.query(Course).filter(Course.id == course_id).first()
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-
-    exams_dict = _get_exams_as_dicts(course_id, db)
-    evolution_report = ExamEvolutionService.analyze_evolution(course_id, exams_dict)
+    exams_dict = _get_exams_as_dicts(course.id, db)
+    evolution_report = ExamEvolutionService.analyze_evolution(course.id, exams_dict)
     
     _ANALYSIS_CACHE[cache_key] = (time.time(), evolution_report)
     return evolution_report

@@ -7,9 +7,43 @@ from backend.services.prediction.context import HistoricalContext, PredictionTar
 from backend.services.prediction.repository import HistoricalRepository
 from backend.core.database import get_db
 from backend.models.core import Course, Exam
+import re
 from typing import Any, Optional
+from fastapi import APIRouter, HTTPException, Query, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 router = APIRouter()
+
+
+def _find_course(db: Session, identifier: str) -> Optional[Course]:
+    """Generically resolve a course by exact name, case-insensitive name, code, ID, or alphanumeric string."""
+    # 1. Exact or case-insensitive name match
+    course = db.query(Course).filter(func.lower(Course.name) == identifier.lower()).first()
+    if course:
+        return course
+
+    # 2. Case-insensitive code match (e.g. SEM1-CALC)
+    course = db.query(Course).filter(func.lower(Course.code) == identifier.lower()).first()
+    if course:
+        return course
+
+    # 3. Numeric ID match
+    if identifier.isdigit():
+        course = db.query(Course).filter(Course.id == int(identifier)).first()
+        if course:
+            return course
+
+    # 4. Normalized alphanumeric match (ignores spaces, punctuation, case)
+    norm_id = re.sub(r'[^a-zA-Z0-9]', '', identifier).lower()
+    if norm_id:
+        for c in db.query(Course).all():
+            if re.sub(r'[^a-zA-Z0-9]', '', c.name).lower() == norm_id:
+                return c
+            if re.sub(r'[^a-zA-Z0-9]', '', c.code).lower() == norm_id:
+                return c
+
+    return None
 
 
 def _build_historical_exam_payloads(hist_exams_orm: list[Any]) -> list[dict[str, Any]]:
@@ -47,7 +81,7 @@ def _build_historical_exam_payloads(hist_exams_orm: list[Any]) -> list[dict[str,
 @router.get("/predictions/{subject}")
 def get_prediction(subject: str, target_year: Optional[int] = Query(None), db: Session = Depends(get_db)):
     try:
-        course = db.query(Course).filter(Course.name == subject).first()
+        course = _find_course(db, subject)
         if not course:
             raise HTTPException(status_code=404, detail="Subject not found")
 
@@ -69,7 +103,7 @@ def get_prediction(subject: str, target_year: Optional[int] = Query(None), db: S
         hist_exams_orm = repo.get_historical_exams()
         if not hist_exams_orm:
             return {
-                "subject": subject,
+                "subject": course.name,
                 "target_year": target_year,
                 "predictions": [],
                 "evidence": "Insufficient historical data",
@@ -111,7 +145,7 @@ def get_prediction(subject: str, target_year: Optional[int] = Query(None), db: S
             })
 
         return {
-            "subject": subject,
+            "subject": course.name,
             "target_year": target_year,
             "predictions": predictions,
             "evidence": f"Analyzed {len(hist_exams_orm)} historical exams.",
