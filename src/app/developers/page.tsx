@@ -3,7 +3,17 @@
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import Link from "next/link";
-import { Leaf } from "lucide-react";
+import { Leaf, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+import { useState, useEffect, useRef } from "react";
+
+declare global {
+  interface Window {
+    leafTimer?: any;
+    coughAudio?: HTMLAudioElement;
+    snoopAudio?: HTMLAudioElement;
+  }
+}
 
 interface Developer {
   name: string;
@@ -126,46 +136,112 @@ function CardBotanical() {
 }
 
 function IDCard({ dev, index }: { dev: Developer; index: number }) {
+  const [isTapped, setIsTapped] = useState(false);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [dropped, setDropped] = useState(false);
+  const todayDate = new Date().toISOString().split('T')[0].replace(/-/g, '.');
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const card = e.currentTarget;
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Calculate rotation (max 10 degrees)
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const rotateX = ((y - centerY) / centerY) * -10;
+    const rotateY = ((x - centerX) / centerX) * 10;
+    
+    setTilt({ x: rotateX, y: rotateY });
+  };
+
+  const handleMouseLeave = () => {
+    setTilt({ x: 0, y: 0 });
+  };
+
   return (
-    <div className="flex flex-col items-center pb-8">
-      {/* Lanyard Strap */}
-      <div className="flex flex-col items-center z-10 relative">
-        {/* The strap going up */}
-        <div className="w-8 h-6 bg-muted rounded-t-md border-x border-t border-border/50" />
-        {/* The rounded clip */}
-        <div className="w-12 h-5 bg-card rounded-b-[10px] border border-border/50 -mt-[1px]" />
+    <div className={`flex flex-col items-center pb-8 perspective-[1000px] transition-all duration-1000 ease-in ${
+      dropped ? 'translate-y-[150vh] rotate-[-20deg] opacity-0 pointer-events-none' : ''
+    }`}>
+      {/* Interactive Lanyard Clip */}
+      <div 
+        className="flex flex-col items-center z-20 relative cursor-pointer group transition-transform hover:-translate-y-1"
+        onClick={() => {
+          setDropped(true);
+          toast("Badge unclipped!", { icon: "📎" });
+          setTimeout(() => setDropped(false), 2500);
+        }}
+        title="Unclip badge"
+      >
+        {/* Fabric strap */}
+        <div className="w-5 h-8 bg-muted-foreground/20 rounded-t-sm shadow-inner group-hover:bg-accent/30 transition-colors" />
+        {/* Metal ring */}
+        <div className="w-6 h-6 rounded-full border-[3px] border-border/80 bg-background -mt-2 z-20 shadow-sm group-hover:border-accent/60 transition-colors" />
       </div>
 
       {/* Card */}
       <div
-        className={`relative w-[340px] sm:w-[380px] h-fit rounded-2xl overflow-hidden -mt-1 shadow-2xl bg-card transition-colors duration-300 ${
-          index === 1 ? 'border border-accent/30' : 'border border-border/50'
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+          transformStyle: "preserve-3d"
+        }}
+        className={`relative w-[340px] sm:w-[380px] h-fit rounded-[1.5rem] overflow-hidden shadow-2xl bg-card transition-transform duration-200 ease-out -mt-3 ${
+          index === 1 ? 'border-[1.5px] border-accent/40 shadow-accent/10' : 'border border-border/60'
         }`}
       >
+        {/* Plastic Glare Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/20 dark:via-white/[0.02] dark:to-white/10 pointer-events-none z-50 mix-blend-overlay" />
+
         {/* Botanical background pattern */}
         <CardBotanical />
 
         {/* Header: Logo + Number */}
-        <div className="relative flex items-start justify-between px-6 pt-6 pb-2">
+        <div className="relative flex items-start justify-between px-6 pt-12 pb-2">
           <div className="flex items-center gap-2.5">
             <Leaf className="w-5 h-5 text-accent" />
             <div>
               <p className="text-[15px] font-bold text-foreground leading-none">MarkMint</p>
-              <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-muted-foreground mt-0.5">Developer</p>
+              <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-muted-foreground mt-0.5">Access Badge</p>
             </div>
           </div>
           <span className="text-xl font-bold text-muted-foreground/30 mt-1">{dev.number}</span>
         </div>
 
+        {/* Official Details Row */}
+        <div className="px-6 flex gap-6 mt-1 mb-4">
+          <div>
+            <p className="text-[8px] uppercase tracking-widest text-muted-foreground/70">Issue Date</p>
+            <p className="text-[10px] font-mono font-medium">{todayDate}</p>
+          </div>
+          <div>
+            <p className="text-[8px] uppercase tracking-widest text-muted-foreground/70">Clearance</p>
+            <p className="text-[10px] font-mono font-medium text-accent">LEVEL 5</p>
+          </div>
+          <div>
+            <p className="text-[8px] uppercase tracking-widest text-muted-foreground/70">Status</p>
+            <p className="text-[10px] font-mono font-medium text-green-500">ACTIVE</p>
+          </div>
+        </div>
+
         {/* Photo + Skills */}
         <div className="relative flex items-start px-6 gap-5 mt-2">
           {/* Photo */}
-          <div className="w-[150px] h-[170px] flex-shrink-0 rounded-xl overflow-hidden border border-border/50 bg-background/50 shadow-lg">
-            <img
-              src={dev.avatar}
-              alt={dev.name}
-              className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
-            />
+          <div 
+            className="relative w-[130px] h-[150px] sm:w-[150px] sm:h-[170px] flex-shrink-0 rounded-xl overflow-visible group cursor-pointer"
+            onClick={() => setIsTapped(!isTapped)}
+          >
+            {/* Glow effect */}
+            <div className={`absolute inset-0 bg-accent/40 rounded-xl blur-xl transition-opacity duration-700 -z-10 ${isTapped ? 'opacity-100' : 'opacity-0 md:group-hover:opacity-100'}`} />
+            <div className="w-full h-full rounded-xl overflow-hidden border-2 border-border/50 bg-background/50 shadow-inner relative z-10">
+              <img
+                src={dev.avatar}
+                alt={dev.name}
+                className={`w-full h-full object-cover transition-all duration-700 ${isTapped ? 'grayscale-0 scale-105' : 'grayscale md:group-hover:grayscale-0 md:group-hover:scale-105'}`}
+              />
+            </div>
           </div>
 
           {/* Skills */}
@@ -180,38 +256,109 @@ function IDCard({ dev, index }: { dev: Developer; index: number }) {
                 </span>
               ))}
             </div>
+            
           </div>
         </div>
 
         {/* Name + Role */}
         <div className="relative px-6 pt-5 pb-2">
-          <h3 className="text-2xl font-bold text-foreground leading-tight">{dev.name}</h3>
-          <p className="text-[15px] font-bold text-accent mt-1">{dev.role}</p>
+          <h3 className="text-2xl sm:text-3xl font-bold text-foreground leading-tight tracking-tight">{dev.name}</h3>
+          <p className="text-[15px] sm:text-base font-bold text-accent mt-1 uppercase tracking-wide">{dev.role}</p>
           <p className="text-xs text-muted-foreground mt-1 italic">{dev.status}</p>
         </div>
 
         {/* Social Icons */}
         <div className="relative flex items-center gap-6 px-6 pt-3 pb-5">
-          <Link href={dev.github} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label={`${dev.name} GitHub`}>
+          <Link href={dev.github} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label={`\${dev.name} GitHub`}>
             <GithubIcon />
           </Link>
-          <Link href={dev.linkedin} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label={`${dev.name} LinkedIn`}>
+          <Link href={dev.linkedin} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label={`\${dev.name} LinkedIn`}>
             <LinkedinIcon />
           </Link>
-          <Link href={dev.instagram} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label={`${dev.name} Instagram`}>
+          <Link href={dev.instagram} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label={`\${dev.name} Instagram`}>
             <InstagramIcon />
           </Link>
         </div>
 
         {/* Footer: Barcode */}
-        <div className="relative flex items-end justify-end px-6 py-4 border-t border-border/50">
-          <div className="flex items-end gap-2">
+        <div className="relative flex justify-end px-6 py-4 border-t border-border/50 bg-muted/10">
+          <div className="flex flex-col items-end">
             <RealisticBarcode />
-            <span className="text-[9px] font-mono text-muted-foreground/40 ml-1 mb-0.5">{dev.id}</span>
           </div>
         </div>
-
       </div>
+    </div>
+  );
+}
+
+function FloatingLeaf() {
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const cough = new Audio("/cough.mp3");
+      cough.preload = "auto";
+      window.coughAudio = cough;
+      
+      const snoop = new Audio("/snoop.mp3");
+      snoop.preload = "auto";
+      window.snoopAudio = snoop;
+    }
+  }, []);
+
+  const handleLeafClick = () => {
+    const isHigh = document.documentElement.classList.contains('theme-high');
+    if (window.leafTimer) clearTimeout(window.leafTimer);
+    
+    if (isHigh) {
+      document.documentElement.classList.remove('theme-high');
+      document.body.classList.add('smoke-clearing');
+      
+      if (window.coughAudio) {
+        window.coughAudio.currentTime = 0;
+        window.coughAudio.volume = 0.6;
+        window.coughAudio.play().catch(e => console.log(e));
+      } else {
+        new Audio("/cough.mp3").play().catch(e => {});
+      }
+      toast("Too strong? Back to normal.", { icon: "😮‍💨" });
+      
+      setTimeout(() => document.body.classList.remove('smoke-clearing'), 2000);
+    } else {
+      document.documentElement.classList.add('theme-high');
+      
+      if (window.snoopAudio) {
+        window.snoopAudio.currentTime = 0;
+        window.snoopAudio.volume = 0.8;
+        window.snoopAudio.play().catch(e => console.log(e));
+      } else {
+        new Audio("/snoop.mp3").play().catch(e => {});
+      }
+      toast.success("High Mode Activated 🌿", { icon: "🔥" });
+      
+      window.leafTimer = setTimeout(() => {
+        if (document.documentElement.classList.contains('theme-high')) {
+          document.documentElement.classList.remove('theme-high');
+          document.body.classList.add('smoke-clearing');
+          
+          if (window.coughAudio) {
+            window.coughAudio.currentTime = 0;
+            window.coughAudio.volume = 0.6;
+            window.coughAudio.play().catch(e => {});
+          }
+          toast("Too strong? Back to normal.", { icon: "😮‍💨" });
+          
+          setTimeout(() => document.body.classList.remove('smoke-clearing'), 2000);
+        }
+      }, 15000);
+    }
+  };
+
+  return (
+    <div className="floating-leaf-anim group" onClick={handleLeafClick}>
+      <img 
+        src="/secret-leaf.png" 
+        alt="Secret Leaf" 
+        className="w-10 h-10 opacity-60 hover:opacity-100 hover:scale-110 drop-shadow-lg transition-all duration-300 dark:brightness-110" 
+      />
     </div>
   );
 }
@@ -219,6 +366,7 @@ function IDCard({ dev, index }: { dev: Developer; index: number }) {
 export default function DevelopersPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground selection:bg-accent/20">
+      <FloatingLeaf />
       <Navbar />
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-6 md:px-10 pt-12 pb-32">
